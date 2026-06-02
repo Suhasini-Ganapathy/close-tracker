@@ -610,6 +610,126 @@ def render_tables(
         )
 
 
+# ── CFO email generation ──────────────────────────────────────────────────────
+
+def generate_cfo_email(bu_df: pd.DataFrame, full_df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    today = datetime.now().strftime("%d-%B-%Y")
+
+    total = len(bu_df)
+    complete = int((bu_df["Status"] == "Complete").sum())
+    blocked_count = int((bu_df["Status"] == "Blocked").sum())
+    escalated_count = int((bu_df["Escalated"] == "Yes").sum())
+    pct = round(complete / total * 100) if total > 0 else 0
+
+    bu_entities = [
+        ("BU001", "Switzerland"),
+        ("BU002", "Germany"),
+        ("BU003", "Austria"),
+    ]
+    bu_lines = []
+    for key, country in bu_entities:
+        sub = bu_df[bu_df["Lowest Org Level Name"] == key]
+        sub_total = len(sub)
+        sub_complete = int((sub["Status"] == "Complete").sum())
+        sub_blocked = int((sub["Status"] == "Blocked").sum())
+        sub_escalated = int((sub["Escalated"] == "Yes").sum())
+        sub_pct = round(sub_complete / sub_total * 100) if sub_total > 0 else 0
+        if sub_blocked == 0 and sub_escalated == 0:
+            note = "all tasks on track"
+        else:
+            parts = []
+            if sub_blocked > 0:
+                parts.append(f"{sub_blocked} task(s) blocked")
+            if sub_escalated > 0:
+                parts.append(f"{sub_escalated} task(s) escalated")
+            note = ", ".join(parts) + " - requires attention"
+        bu_lines.append(f"  - {key} {country}: {sub_pct}% complete - {note}")
+
+    attention_mask = (bu_df["Status"] == "Blocked") | (bu_df["Escalated"] == "Yes")
+    attention_df = bu_df[attention_mask].drop_duplicates(subset=["Task ID"])
+
+    attention_lines = []
+    for key, country in bu_entities:
+        bu_attention = attention_df[attention_df["Lowest Org Level Name"] == key]
+        if bu_attention.empty:
+            continue
+        attention_lines.append(f"  {key} {country}:")
+        for _, row in bu_attention.iterrows():
+            task_id = str(row.get("Task ID", ""))
+            desc = str(row.get("Task Description", ""))
+            owner = str(row.get("Task Owner", ""))
+            status = str(row.get("Status", ""))
+            comment = str(row.get("Comments", "")).strip()[:80]
+            line = f"  - {task_id} {desc} (Owner: {owner}) - {status}"
+            if comment:
+                line += f" - {comment}"
+            attention_lines.append(line)
+
+    attention_block = (
+        "\n".join(attention_lines) if attention_lines
+        else "  No items currently flagged for attention."
+    )
+
+    dach_rows = full_df[full_df["Task ID"] == "CL008-REG"]
+    if dach_rows.empty:
+        dach_status = "Not found"
+        dach_comment = ""
+    else:
+        dach_status = str(dach_rows.iloc[0].get("Status", "Unknown"))
+        dach_comment = str(dach_rows.iloc[0].get("Comments", "")).strip()
+
+    dach_line = f"Status: {dach_status}."
+    if dach_comment:
+        dach_line += f" {dach_comment}"
+
+    if blocked_count > 0 or escalated_count > 0:
+        overall = (
+            f"The close is currently at risk due to {blocked_count} blocked and "
+            f"{escalated_count} escalated task(s) requiring immediate resolution."
+        )
+        resolution = (
+            "Blocked items are under active investigation by the respective task owners. "
+            "Resolution is targeted within 4 hours. A further update will be provided "
+            "if items remain unresolved by WD+1 12:00."
+        )
+    else:
+        overall = "The close is progressing on schedule with no critical issues outstanding."
+        resolution = "No critical blockers outstanding. Close expected to complete on schedule."
+
+    bu_summary = "\n".join(bu_lines)
+
+    return f"""Subject: Month-End Close Status Update | Fiscal Period 2026 P05 | WD+1
+
+To: CFO, Helvetia Advisory AG
+From: DACH FP&A Lead
+Date: {today}
+
+Dear CFO,
+
+Please find below the WD+1 close status update for Helvetia Advisory AG, Fiscal Period 2026 P05. \
+As of this morning, {complete} of {total} BU-level tasks are complete ({pct}%). {overall}
+
+BU STATUS SUMMARY
+{bu_summary}
+
+ITEMS REQUIRING ATTENTION
+{attention_block}
+
+DACH CONSOLIDATION
+Task CL008-REG - {dach_line}
+
+EXPECTED RESOLUTION
+{resolution}
+
+Regards,
+DACH FP&A Lead
+Helvetia Advisory AG"""
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -620,6 +740,16 @@ def main():
         padding-top: 0 !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
+    }
+    .stButton > button {
+        background-color: rgb(128, 27, 43) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+    }
+    .stButton > button:hover {
+        background-color: rgb(100, 20, 33) !important;
+        color: white !important;
     }
     </style>
     """,
@@ -661,12 +791,27 @@ def main():
 
     render_sidebar()
 
+    bu_df = df[df["Organization Level"] == "BU"].copy()
+
     content_col, filter_col = st.columns([4, 1])
 
     with filter_col:
+        st.markdown(
+            f"<p style='color:{COLOR_PRIMARY}; font-size:0.8rem; font-weight:700; "
+            f"margin:0 0 4px 0; letter-spacing:0.5px'>AI ASSISTANT</p>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Generate CFO Status Email", use_container_width=True):
+            st.session_state["cfo_email"] = generate_cfo_email(bu_df, df)
+        st.text_area(
+            "Email Draft",
+            value=st.session_state.get("cfo_email", ""),
+            height=250,
+        )
+        st.caption("Review and copy to your email client")
+        st.divider()
         entities, phases, statuses, timeline_statuses, owner_functions = render_filters(df)
 
-    bu_df = df[df["Organization Level"] == "BU"].copy()
     filtered = apply_filters(bu_df, entities, phases, statuses, timeline_statuses, owner_functions)
 
     with content_col:
