@@ -447,7 +447,7 @@ def render_owner_function_charts(df: pd.DataFrame):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def render_sidebar():
+def render_sidebar() -> str:
     st.sidebar.markdown(
         f"<h2 style='color:{COLOR_PRIMARY}; margin-bottom:0'>Helvetia Advisory AG</h2>",
         unsafe_allow_html=True,
@@ -457,12 +457,18 @@ def render_sidebar():
         unsafe_allow_html=True,
     )
     st.sidebar.divider()
+    active_page = st.sidebar.radio(
+        "Navigation",
+        options=["Summary", "AI Assistant", "Details"],
+        label_visibility="collapsed",
+    )
     with st.sidebar.expander("About this app"):
         st.write(
             "AI-assisted month-end close manager for Helvetia Advisory AG. "
             "Displays close progress across DACH business units at WD+1, "
             "with exception flagging and AI-powered FP&A analysis."
         )
+    return active_page
 
 
 # ── Filter panel ──────────────────────────────────────────────────────────────
@@ -730,6 +736,251 @@ DACH FP&A Lead
 Helvetia Advisory AG"""
 
 
+# ── Accruals analysis generation ──────────────────────────────────────────────
+
+def generate_accruals_analysis(df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    summary_labels = {
+        "SUMMARY", "Total Missing Accruals (count)",
+        "Estimated Missing Amount (CHF)", "AI Recommendation",
+    }
+    flagged = df[
+        pd.notna(df["AI Flag"])
+        & (df["AI Flag"].astype(str).str.strip() != "")
+        & (~df["Account Code"].astype(str).isin(summary_labels))
+    ].copy()
+
+    lines = ["Suggested Accruals Review - BU001 Switzerland - Period P05", ""]
+    for _, row in flagged.iterrows():
+        code = str(row.get("Account Code", ""))
+        name = str(row.get("Account Name", ""))
+        submission = row.get("P05 Submission (CHF)", 0)
+        avg = row.get("3M Avg (CHF)", 0)
+        variance = row.get("Variance vs Avg (CHF)", 0)
+        flag = str(row.get("AI Flag", ""))
+        sub_fmt = f"CHF {int(submission):,}" if pd.notna(submission) else "n/a"
+        avg_fmt = f"CHF {int(avg):,}" if pd.notna(avg) else "n/a"
+        var_fmt = f"CHF {int(variance):,}" if pd.notna(variance) else "n/a"
+        lines.append(f"Account {code} - {name}")
+        lines.append(f"  P05 Submission: {sub_fmt} | 3M Avg: {avg_fmt} | Variance vs Avg: {var_fmt}")
+        lines.append(f"  AI Flag: {flag}")
+        lines.append("")
+
+    est_row = df[df["Account Code"].astype(str) == "Estimated Missing Amount (CHF)"]
+    rec_row = df[df["Account Code"].astype(str) == "AI Recommendation"]
+
+    if not est_row.empty:
+        est_val = est_row.iloc[0]["Account Name"]
+        try:
+            lines.append(f"TOTAL ESTIMATED MISSING ACCRUALS: CHF {int(float(est_val)):,}")
+        except (ValueError, TypeError):
+            lines.append(f"TOTAL ESTIMATED MISSING ACCRUALS: {est_val}")
+
+    if not rec_row.empty:
+        rec_text = str(rec_row.iloc[0]["Account Name"])
+        lines.append(f"\nAI RECOMMENDATION\n{rec_text}")
+
+    return "\n".join(lines)
+
+
+# ── Variance root cause generation ────────────────────────────────────────────
+
+def generate_variance_analysis(df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    breaching = df[df["Threshold Breach"].astype(str).str.contains("YES", na=False)].copy()
+    ebit_rows = df[df["P&L Line"].astype(str).str.strip() == "EBIT"]
+
+    lines = ["Variance Root Cause Analysis - DACH Region Consolidated - Period P05", ""]
+    lines.append("THRESHOLD BREACH ITEMS")
+    lines.append("")
+
+    for _, row in breaching.iterrows():
+        pl_line = str(row.get("P&L Line", ""))
+        budget = row.get("Budget (CHF)", 0)
+        actuals = row.get("Actuals (CHF)", 0)
+        variance = row.get("Variance (CHF)", 0)
+        var_pct = row.get("Variance %", 0)
+        driver = str(row.get("Driver Category", ""))
+        breach = str(row.get("Threshold Breach", ""))
+        note = str(row.get("AI Root Cause Note", ""))[:120]
+        budget_fmt = f"CHF {int(budget):,}" if pd.notna(budget) else "n/a"
+        actuals_fmt = f"CHF {int(actuals):,}" if pd.notna(actuals) else "n/a"
+        var_fmt = f"CHF {int(variance):,}" if pd.notna(variance) else "n/a"
+        try:
+            pct_fmt = f"{float(var_pct) * 100:.1f}%"
+        except (ValueError, TypeError):
+            pct_fmt = "n/a"
+        lines.append(f"{pl_line} [{breach}]")
+        lines.append(f"  Budget: {budget_fmt} | Actuals: {actuals_fmt} | Variance: {var_fmt} ({pct_fmt})")
+        lines.append(f"  Driver: {driver}")
+        lines.append(f"  Root Cause: {note}")
+        lines.append("")
+
+    if not ebit_rows.empty:
+        erow = ebit_rows.iloc[0]
+        ebit_var = erow.get("Variance (CHF)", 0)
+        ebit_note = str(erow.get("AI Root Cause Note", ""))[:120]
+        ebit_fmt = f"CHF {int(ebit_var):,}" if pd.notna(ebit_var) else "n/a"
+        lines.append("EBIT SUMMARY")
+        lines.append(f"  EBIT Variance: {ebit_fmt}")
+        lines.append(f"  {ebit_note}")
+
+    return "\n".join(lines)
+
+
+# ── Missing account checks generation ─────────────────────────────────────────
+
+def generate_missing_accounts(df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    flagged = df[df["Zero Balance Flag"].astype(str).str.strip() == "YES"].copy()
+
+    lines = ["Missing Account Checks - BU001 Switzerland - Period P05", ""]
+    lines.append(f"FLAGGED ACCOUNTS ({len(flagged)} with unexpected zero balance)")
+    lines.append("")
+
+    for _, row in flagged.iterrows():
+        code = str(row.get("Account Code", ""))
+        name = str(row.get("Account Name", ""))
+        p04 = row.get("P04 Balance (CHF)", 0)
+        p05 = row.get("P05 Balance (CHF)", 0)
+        inv_status = str(row.get("Investigation Status", "")).strip()
+        note = str(row.get("AI Note", ""))
+        p04_fmt = f"CHF {int(p04):,}" if pd.notna(p04) else "n/a"
+        p05_fmt = f"CHF {int(p05):,}" if pd.notna(p05) else "n/a"
+        lines.append(f"Account {code} - {name}")
+        lines.append(f"  P04 Balance: {p04_fmt} | P05 Balance: {p05_fmt}")
+        if inv_status and inv_status != "nan":
+            lines.append(f"  Status: {inv_status}")
+        lines.append(f"  AI Note: {note}")
+        lines.append("")
+
+    summary_labels = {
+        "SUMMARY", "Total accounts reviewed", "Accounts with zero balance flag",
+        "Accounts expected to post with zero balance", "AI Recommendation",
+    }
+    summary_rows = df[df["Account Code"].astype(str).isin(summary_labels)]
+
+    if not summary_rows.empty:
+        lines.append("SUMMARY")
+        for _, row in summary_rows.iterrows():
+            label = str(row.get("Account Code", ""))
+            val = row.get("Account Name", "")
+            if label == "AI Recommendation":
+                lines.append(f"\nAI RECOMMENDATION\n{val}")
+            elif label != "SUMMARY":
+                lines.append(f"  {label}: {val}")
+
+    return "\n".join(lines)
+
+
+# ── Narrative consistency check generation ────────────────────────────────────
+
+def generate_narrative_check(df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    # Section B header at row index 12, data at rows 13-18
+    sec_b = df.iloc[13:19].copy()
+    sec_b.columns = df.iloc[12].tolist()
+    sec_b = sec_b.reset_index(drop=True)
+
+    total = len(sec_b)
+    flagged_count = int(
+        sec_b["Consistency Status"].astype(str).str.contains("INCONSISTENT", na=False).sum()
+    )
+    material_count = int(
+        sec_b["Consistency Status"].astype(str).str.contains("MATERIAL", na=False).sum()
+    )
+
+    lines = ["Narrative Consistency Check - BU001 Switzerland - Period P05", ""]
+    lines.append(
+        f"REVIEW SUMMARY: {flagged_count} of {total} paragraphs flagged "
+        f"({material_count} MATERIAL)"
+    )
+    lines.append("")
+
+    for _, row in sec_b.iterrows():
+        ref = str(row.get("Commentary Ref", ""))
+        topic = str(row.get("Topic", ""))
+        reported = str(row.get("Reported Figure", ""))[:80]
+        stated = str(row.get("Commentary States", ""))
+        variance = str(row.get("Variance (CHF)", ""))
+        status = str(row.get("Consistency Status", ""))
+        flag = str(row.get("AI Flag & Recommendation", ""))[:120]
+        lines.append(f"{ref} - {topic}: {status}")
+        lines.append(f"  Reported: {reported}")
+        lines.append(f"  Commentary states: {stated}")
+        if "INCONSISTENT" in status:
+            lines.append(f"  Variance: {variance}")
+            lines.append(f"  Recommendation: {flag}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ── Headcount exception detection generation ──────────────────────────────────
+
+def generate_headcount_exceptions(df: pd.DataFrame) -> str:
+    # TO ACTIVATE LIVE API: replace string construction below with anthropic client call
+    # client = anthropic.Anthropic()
+    # response = client.messages.create(model="claude-sonnet-4-20250514", ...)
+
+    exception_rows = df[
+        df["AI Exception Flag"].astype(str).str.contains("EXCEPTION|EXIT", na=False)
+    ].copy()
+
+    dach_labels = {
+        "DACH SUMMARY", "Total DACH headcount plan", "Total DACH actual headcount P0",
+        "Net variance vs plan", "Departments with exceptions", "AI Recommendation",
+    }
+    dach_summary = df[df["Entity"].astype(str).isin(dach_labels)]
+
+    lines = ["Headcount Exception Detection - DACH Region - Period P05", ""]
+    lines.append(f"EXCEPTION ITEMS ({len(exception_rows)} departments with exceptions or exits)")
+    lines.append("")
+
+    for _, row in exception_rows.iterrows():
+        entity = str(row.get("Entity", ""))
+        dept = str(row.get("Department", ""))
+        approved = row.get("Approved HC Plan", 0)
+        actual = row.get("Actual HC P05", 0)
+        variance = row.get("Variance (HC)", 0)
+        cost = row.get("Monthly Cost Impact", 0)
+        curr = str(row.get("Currency", ""))
+        flag = str(row.get("AI Exception Flag", ""))[:100]
+        approved_fmt = int(approved) if pd.notna(approved) else "n/a"
+        actual_fmt = int(actual) if pd.notna(actual) else "n/a"
+        var_fmt = f"{int(variance):+}" if pd.notna(variance) else "n/a"
+        cost_fmt = f"{curr} {int(cost):,}" if pd.notna(cost) and cost != 0 else "nil"
+        lines.append(f"{entity} - {dept}")
+        lines.append(f"  Approved Plan: {approved_fmt} | Actual P05: {actual_fmt} | Variance: {var_fmt}")
+        lines.append(f"  Monthly Cost Impact: {cost_fmt}")
+        lines.append(f"  Flag: {flag}")
+        lines.append("")
+
+    if not dach_summary.empty:
+        lines.append("DACH CONSOLIDATED SUMMARY")
+        for _, row in dach_summary.iterrows():
+            label = str(row.get("Entity", ""))
+            val = row.get("Department", "")
+            if label == "AI Recommendation":
+                lines.append(f"\nAI RECOMMENDATION\n{val}")
+            elif label != "DACH SUMMARY":
+                lines.append(f"  {label}: {val}")
+
+    return "\n".join(lines)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -738,8 +989,8 @@ def main():
     <style>
     .block-container {
         padding-top: 0 !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
     }
     .stButton > button {
         background-color: rgb(128, 27, 43) !important;
@@ -750,6 +1001,11 @@ def main():
     .stButton > button:hover {
         background-color: rgb(100, 20, 33) !important;
         color: white !important;
+    }
+    textarea[disabled] {
+        color: #1a1a1a !important;
+        -webkit-text-fill-color: #1a1a1a !important;
+        opacity: 1 !important;
     }
     </style>
     """,
@@ -789,45 +1045,165 @@ def main():
 
     df = load_task_master()
 
-    render_sidebar()
+    active_page = render_sidebar()
 
     bu_df = df[df["Organization Level"] == "BU"].copy()
+    now = datetime.now()
 
-    content_col, filter_col = st.columns([4, 1])
-
-    with filter_col:
-        st.markdown(
-            f"<p style='color:{COLOR_PRIMARY}; font-size:0.8rem; font-weight:700; "
-            f"margin:0 0 4px 0; letter-spacing:0.5px'>AI ASSISTANT</p>",
-            unsafe_allow_html=True,
-        )
-        if st.button("Generate CFO Status Email", use_container_width=True):
-            st.session_state["cfo_email"] = generate_cfo_email(bu_df, df)
-        st.text_area(
-            "Email Draft",
-            value=st.session_state.get("cfo_email", ""),
-            height=250,
-        )
-        st.caption("Review and copy to your email client")
-        st.divider()
-        entities, phases, statuses, timeline_statuses, owner_functions = render_filters(df)
-
-    filtered = apply_filters(bu_df, entities, phases, statuses, timeline_statuses, owner_functions)
-
-    with content_col:
-        now = datetime.now()
-        subtitle = f"Month-End Close Snapshot | Fiscal Period 2026 P05 | As of WD+1, {now.strftime('%d-%B-%Y %H:%M')}"
+    if active_page == "AI Assistant":
+        subtitle = "AI-Powered FP&A Analysis | Fiscal Period 2026 P05 | As of WD+1"
         st.markdown(
             f"<p style='color:{COLOR_PRIMARY}; margin:0 0 20px 0; font-size:1rem; "
             f"font-weight:500; letter-spacing:0.3px;'>{subtitle}</p>",
             unsafe_allow_html=True,
         )
-        render_metrics(filtered, total_task_count=len(df), bu_task_count=len(bu_df))
-        render_bu_charts(filtered)
-        render_bu_donut_charts(filtered)
-        render_owner_function_charts(filtered)
-        st.markdown("---")
-        render_tables(filtered, df, phases, timeline_statuses)
+
+        row1_col1, row1_col2, row1_col3 = st.columns(3)
+        row2_col1, row2_col2, row2_col3 = st.columns(3)
+
+        with row1_col1:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"CFO Status Email</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Generates a structured close status email to the CFO covering "
+                "BU progress, blocked items, and escalation risk."
+            )
+            if st.button("Generate CFO Status Email", use_container_width=True):
+                st.session_state["cfo_email"] = generate_cfo_email(bu_df, df)
+            with st.expander("CFO Email Draft", expanded=bool(st.session_state.get("cfo_email"))):
+                st.code(st.session_state.get("cfo_email", ""), language=None)
+                st.caption("Review and copy to your email client")
+
+        with row1_col2:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"Suggested Accruals</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Compares prior 3-month posting averages against current submissions "
+                "to flag missing or anomalous accrual entries."
+            )
+            if st.button("Suggested Accruals", use_container_width=True):
+                df_acc = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Suggested Accruals",
+                    header=2,
+                )
+                st.session_state["accruals_output"] = generate_accruals_analysis(df_acc)
+            with st.expander("Suggested Accruals Analysis", expanded=bool(st.session_state.get("accruals_output"))):
+                st.code(st.session_state.get("accruals_output", ""), language=None)
+
+        with row1_col3:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"Variance Root Cause</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Identifies P&L lines exceeding variance thresholds and suggests "
+                "probable root causes by driver category."
+            )
+            if st.button("Variance Root Cause", use_container_width=True):
+                df_var = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Variance Root Cause",
+                    header=2,
+                )
+                st.session_state["variance_output"] = generate_variance_analysis(df_var)
+            with st.expander("Variance Root Cause Analysis", expanded=bool(st.session_state.get("variance_output"))):
+                st.code(st.session_state.get("variance_output", ""), language=None)
+
+        with row2_col1:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"Missing Account Checks</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Flags accounts expected to post each period that carry an unexpected "
+                "zero balance in the current period."
+            )
+            if st.button("Missing Account Checks", use_container_width=True):
+                df_mac = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Missing Account Checks",
+                    header=2,
+                )
+                st.session_state["missing_accounts_output"] = generate_missing_accounts(df_mac)
+            with st.expander("Missing Account Checks", expanded=bool(st.session_state.get("missing_accounts_output"))):
+                st.code(st.session_state.get("missing_accounts_output", ""), language=None)
+
+        with row2_col2:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"Narrative Consistency</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Compares draft commentary against reported variance data and flags "
+                "paragraphs where the narrative understates or misattributes variance."
+            )
+            if st.button("Narrative Consistency", use_container_width=True):
+                df_narr = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Narrative Consistency Check",
+                    header=None,
+                )
+                st.session_state["narrative_output"] = generate_narrative_check(df_narr)
+            with st.expander("Narrative Consistency Check", expanded=bool(st.session_state.get("narrative_output"))):
+                st.code(st.session_state.get("narrative_output", ""), language=None)
+
+        with row2_col3:
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:2px'>"
+                f"Headcount Exceptions</p>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Compares approved headcount plan against actuals by department and "
+                "flags movements outside plan with monthly cost impact."
+            )
+            if st.button("Headcount Exceptions", use_container_width=True):
+                df_hc = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Headcount Exception Detection",
+                    header=2,
+                )
+                st.session_state["headcount_output"] = generate_headcount_exceptions(df_hc)
+            with st.expander("Headcount Exception Detection", expanded=bool(st.session_state.get("headcount_output"))):
+                st.code(st.session_state.get("headcount_output", ""), language=None)
+
+    else:
+        content_col, filter_col = st.columns([4, 1])
+
+        with filter_col:
+            entities, phases, statuses, timeline_statuses, owner_functions = render_filters(df)
+
+        filtered = apply_filters(bu_df, entities, phases, statuses, timeline_statuses, owner_functions)
+
+        with content_col:
+            subtitle = (
+                f"Month-End Close Snapshot | Fiscal Period 2026 P05 | "
+                f"As of WD+1, {now.strftime('%d-%B-%Y %H:%M')}"
+            )
+            st.markdown(
+                f"<p style='color:{COLOR_PRIMARY}; margin:0 0 20px 0; font-size:1rem; "
+                f"font-weight:500; letter-spacing:0.3px;'>{subtitle}</p>",
+                unsafe_allow_html=True,
+            )
+
+            if active_page == "Summary":
+                render_metrics(filtered, total_task_count=len(df), bu_task_count=len(bu_df))
+                render_bu_charts(filtered)
+                render_bu_donut_charts(filtered)
+                render_owner_function_charts(filtered)
+
+            else:
+                render_tables(filtered, df, phases, timeline_statuses)
 
 
 if __name__ == "__main__":
