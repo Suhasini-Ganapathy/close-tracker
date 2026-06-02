@@ -448,9 +448,6 @@ def render_owner_function_charts(df: pd.DataFrame):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 def render_sidebar() -> str:
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-
     st.sidebar.markdown(
         f"<h2 style='color:{COLOR_PRIMARY}; margin-bottom:0'>Helvetia Advisory AG</h2>",
         unsafe_allow_html=True,
@@ -465,15 +462,6 @@ def render_sidebar() -> str:
         options=["Summary", "AI Assistant", "Details"],
         label_visibility="collapsed",
     )
-    st.sidebar.divider()
-    password = st.sidebar.text_input("Edit Access Password", type="password")
-    if password:
-        if password == st.secrets["edit_password"]:
-            st.session_state["authenticated"] = True
-        else:
-            st.sidebar.error("Incorrect password")
-    if st.session_state.get("authenticated"):
-        st.sidebar.success("Access granted")
     with st.sidebar.expander("About this app"):
         st.write(
             "AI-assisted month-end close manager for Helvetia Advisory AG. "
@@ -1085,21 +1073,13 @@ def main():
                 "BU progress, blocked items, and escalation risk."
             )
             if st.button("Generate CFO Status Email", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    st.session_state["cfo_email"] = generate_cfo_email(bu_df, df)
-                    st.session_state["cfo_email_auth_warning"] = False
-                else:
-                    st.session_state["cfo_email_auth_warning"] = True
+                st.session_state["cfo_email"] = generate_cfo_email(bu_df, df)
             with st.expander(
                 "CFO Email Draft",
-                expanded=bool(st.session_state.get("cfo_email"))
-                         or bool(st.session_state.get("cfo_email_auth_warning")),
+                expanded=bool(st.session_state.get("cfo_email")),
             ):
-                if st.session_state.get("cfo_email_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("cfo_email", ""), language=None)
-                    st.caption("Review and copy to your email client")
+                st.code(st.session_state.get("cfo_email", ""), language=None)
+                st.caption("Review and copy to your email client")
 
         with row1_col2:
             st.markdown(
@@ -1112,25 +1092,17 @@ def main():
                 "to flag missing or anomalous accrual entries."
             )
             if st.button("Suggested Accruals", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    df_acc = pd.read_excel(
-                        "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
-                        sheet_name="Suggested Accruals",
-                        header=2,
-                    )
-                    st.session_state["accruals_output"] = generate_accruals_analysis(df_acc)
-                    st.session_state["accruals_auth_warning"] = False
-                else:
-                    st.session_state["accruals_auth_warning"] = True
+                df_acc = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Suggested Accruals",
+                    header=2,
+                )
+                st.session_state["accruals_output"] = generate_accruals_analysis(df_acc)
             with st.expander(
                 "Suggested Accruals Analysis",
-                expanded=bool(st.session_state.get("accruals_output"))
-                         or bool(st.session_state.get("accruals_auth_warning")),
+                expanded=bool(st.session_state.get("accruals_output")),
             ):
-                if st.session_state.get("accruals_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("accruals_output", ""), language=None)
+                st.code(st.session_state.get("accruals_output", ""), language=None)
 
         with row1_col3:
             st.markdown(
@@ -1143,25 +1115,17 @@ def main():
                 "probable root causes by driver category."
             )
             if st.button("Variance Root Cause", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    df_var = pd.read_excel(
-                        "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
-                        sheet_name="Variance Root Cause",
-                        header=2,
-                    )
-                    st.session_state["variance_output"] = generate_variance_analysis(df_var)
-                    st.session_state["variance_auth_warning"] = False
-                else:
-                    st.session_state["variance_auth_warning"] = True
+                df_var = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Variance Root Cause",
+                    header=2,
+                )
+                st.session_state["variance_output"] = generate_variance_analysis(df_var)
             with st.expander(
                 "Variance Root Cause Analysis",
-                expanded=bool(st.session_state.get("variance_output"))
-                         or bool(st.session_state.get("variance_auth_warning")),
+                expanded=bool(st.session_state.get("variance_output")),
             ):
-                if st.session_state.get("variance_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("variance_output", ""), language=None)
+                st.code(st.session_state.get("variance_output", ""), language=None)
 
         with row2_col1:
             st.markdown(
@@ -1174,25 +1138,17 @@ def main():
                 "zero balance in the current period."
             )
             if st.button("Missing Account Checks", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    df_mac = pd.read_excel(
-                        "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
-                        sheet_name="Missing Account Checks",
-                        header=2,
-                    )
-                    st.session_state["missing_accounts_output"] = generate_missing_accounts(df_mac)
-                    st.session_state["missing_accounts_auth_warning"] = False
-                else:
-                    st.session_state["missing_accounts_auth_warning"] = True
+                df_mac = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Missing Account Checks",
+                    header=2,
+                )
+                st.session_state["missing_accounts_output"] = generate_missing_accounts(df_mac)
             with st.expander(
                 "Missing Account Checks",
-                expanded=bool(st.session_state.get("missing_accounts_output"))
-                         or bool(st.session_state.get("missing_accounts_auth_warning")),
+                expanded=bool(st.session_state.get("missing_accounts_output")),
             ):
-                if st.session_state.get("missing_accounts_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("missing_accounts_output", ""), language=None)
+                st.code(st.session_state.get("missing_accounts_output", ""), language=None)
 
         with row2_col2:
             st.markdown(
@@ -1205,25 +1161,17 @@ def main():
                 "paragraphs where the narrative understates or misattributes variance."
             )
             if st.button("Narrative Consistency", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    df_narr = pd.read_excel(
-                        "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
-                        sheet_name="Narrative Consistency Check",
-                        header=None,
-                    )
-                    st.session_state["narrative_output"] = generate_narrative_check(df_narr)
-                    st.session_state["narrative_auth_warning"] = False
-                else:
-                    st.session_state["narrative_auth_warning"] = True
+                df_narr = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Narrative Consistency Check",
+                    header=None,
+                )
+                st.session_state["narrative_output"] = generate_narrative_check(df_narr)
             with st.expander(
                 "Narrative Consistency Check",
-                expanded=bool(st.session_state.get("narrative_output"))
-                         or bool(st.session_state.get("narrative_auth_warning")),
+                expanded=bool(st.session_state.get("narrative_output")),
             ):
-                if st.session_state.get("narrative_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("narrative_output", ""), language=None)
+                st.code(st.session_state.get("narrative_output", ""), language=None)
 
         with row2_col3:
             st.markdown(
@@ -1236,25 +1184,17 @@ def main():
                 "flags movements outside plan with monthly cost impact."
             )
             if st.button("Headcount Exceptions", use_container_width=True):
-                if st.session_state.get("authenticated"):
-                    df_hc = pd.read_excel(
-                        "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
-                        sheet_name="Headcount Exception Detection",
-                        header=2,
-                    )
-                    st.session_state["headcount_output"] = generate_headcount_exceptions(df_hc)
-                    st.session_state["headcount_auth_warning"] = False
-                else:
-                    st.session_state["headcount_auth_warning"] = True
+                df_hc = pd.read_excel(
+                    "data/Helvetia_AG_AI_Synthetic_Datasets.xlsx",
+                    sheet_name="Headcount Exception Detection",
+                    header=2,
+                )
+                st.session_state["headcount_output"] = generate_headcount_exceptions(df_hc)
             with st.expander(
                 "Headcount Exception Detection",
-                expanded=bool(st.session_state.get("headcount_output"))
-                         or bool(st.session_state.get("headcount_auth_warning")),
+                expanded=bool(st.session_state.get("headcount_output")),
             ):
-                if st.session_state.get("headcount_auth_warning"):
-                    st.warning("Please enter the edit access password in the sidebar to use AI features.")
-                else:
-                    st.code(st.session_state.get("headcount_output", ""), language=None)
+                st.code(st.session_state.get("headcount_output", ""), language=None)
 
     else:
         content_col, filter_col = st.columns([4, 1])
