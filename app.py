@@ -641,6 +641,7 @@ def generate_cfo_email(bu_df: pd.DataFrame, full_df: pd.DataFrame) -> str:
     complete = int((bu_df["Status"] == "Complete").sum())
     blocked_count = int((bu_df["Status"] == "Blocked").sum())
     escalated_count = int((bu_df["Escalated"] == "Yes").sum())
+    blocked_escalated_count = int(((bu_df["Status"] == "Blocked") | (bu_df["Escalated"] == "Yes")).sum())
     pct = round(complete / total * 100) if total > 0 else 0
 
     bu_entities = [
@@ -706,8 +707,8 @@ def generate_cfo_email(bu_df: pd.DataFrame, full_df: pd.DataFrame) -> str:
 
     if blocked_count > 0 or escalated_count > 0:
         overall = (
-            f"The close is currently at risk due to {blocked_count} blocked and "
-            f"{escalated_count} escalated task(s) requiring immediate resolution."
+            f"The close is currently at risk due to {blocked_escalated_count} task(s) that are blocked or escalated, "
+            f"requiring immediate resolution."
         )
         resolution = (
             "Blocked items are under active investigation by the respective task owners. "
@@ -837,7 +838,7 @@ def generate_variance_analysis(df: pd.DataFrame) -> str:
     if not ebit_rows.empty:
         erow = ebit_rows.iloc[0]
         ebit_var = erow.get("Variance (CHF)", 0)
-        ebit_note = str(erow.get("AI Root Cause Note", ""))[:120]
+        ebit_note = str(erow.get("AI Root Cause Note", ""))
         ebit_fmt = f"CHF {int(ebit_var):,}" if pd.notna(ebit_var) else "n/a"
         lines.append("EBIT SUMMARY")
         lines.append(f"  EBIT Variance: {ebit_fmt}")
@@ -955,7 +956,7 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
         "DACH SUMMARY", "Total DACH headcount plan", "Total DACH actual headcount P0",
         "Net variance vs plan", "Departments with exceptions", "AI Recommendation",
     }
-    dach_summary = df[df["Entity"].astype(str).isin(dach_labels)]
+    dach_summary = df[df["Entity"].astype(str).str.contains("DACH SUMMARY|Total DACH|Net variance|Departments with|AI Recommendation", na=False)]
 
     lines = ["Headcount Exception Detection - DACH Region - Period P05", ""]
     lines.append(f"EXCEPTION ITEMS ({len(exception_rows)} departments with exceptions or exits)")
