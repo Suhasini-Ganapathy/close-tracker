@@ -111,7 +111,7 @@ def load_task_master() -> pd.DataFrame:
         sheet_name="Task Master",
     )
     df = df.rename(columns={"Completon %": "Completion %"})
-    for col in ["Comments", "Escalated", "Status", "Phase", "Lowest Org Level Name", "Owner Function"]:
+    for col in ["Comments", "Escalated", "Status", "Phase", "Lowest Org Level Name", "Owner Function", "Escalation Role"]:
         if col in df.columns:
             df[col] = df[col].fillna("")
     df["Timeline Status"] = df.apply(_timeline_status, axis=1)
@@ -155,6 +155,49 @@ def _make_display(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     return display
 
 
+# ── Demo disclaimer ───────────────────────────────────────────────────────────
+
+def render_disclaimer():
+    st.markdown(
+        """
+        <div style='background:#EEF2F7; border-left:3px solid #4ECDC4; color:#6B7280;
+                    font-size:0.8rem; padding:8px 16px; border-radius:4px; margin-bottom:16px;'>
+            Demo Dataset - Helvetia Advisory AG | Fiscal Period 2026 P05 | For illustration purposes only
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ── RAG close health indicator ────────────────────────────────────────────────
+
+def render_rag_indicator(df: pd.DataFrame):
+    total = len(df)
+    if total == 0:
+        return
+    problem_count = int(((df["Status"] == "Blocked") | (df["Timeline Status"] == "Late")).sum())
+    pct_problem = problem_count / total * 100
+    if pct_problem > 10:
+        color, label = "#C0392B", "Close at Risk"
+    elif pct_problem > 5:
+        color, label = "#F0A500", "Close Needs Attention"
+    else:
+        color, label = "#27AE60", "Close On Track"
+    st.markdown(
+        f"""
+        <div style='background:white; border-left:4px solid {color}; border-radius:8px;
+                    padding:12px 20px; box-shadow:0 2px 8px rgba(27,58,107,0.08); margin-bottom:16px;'>
+            <span style='color:{color}; font-size:1.4rem;'>&#9679;</span>
+            <strong style='color:{color}; font-size:1rem; margin-left:8px;'>{label}</strong>
+            <span style='color:#6B7280; font-size:0.85rem; margin-left:12px;'>
+                {pct_problem:.0f}% of tasks blocked or late ({problem_count} of {total} tasks)
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ── Dashboard calculations ────────────────────────────────────────────────────
 
 def compute_metrics(df: pd.DataFrame) -> dict:
@@ -163,6 +206,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
     in_progress = int((df["Status"] == "In Progress").sum())
     not_started = int((df["Status"] == "Not Started").sum())
     blocked_escalated = int(((df["Status"] == "Blocked") | (df["Escalated"] == "Yes")).sum())
+    sla_breaches          = int(((df["Timeline Status"] == "Late") & (df["Status"] != "Complete")).sum())
     pct_complete          = round(complete          / total * 100) if total > 0 else 0
     pct_in_progress       = round(in_progress       / total * 100) if total > 0 else 0
     pct_not_started       = round(not_started       / total * 100) if total > 0 else 0
@@ -173,6 +217,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
         "in_progress": in_progress,
         "not_started": not_started,
         "blocked_escalated": blocked_escalated,
+        "sla_breaches": sla_breaches,
         "pct_complete": pct_complete,
         "pct_in_progress": pct_in_progress,
         "pct_not_started": pct_not_started,
@@ -185,7 +230,7 @@ def compute_metrics(df: pd.DataFrame) -> dict:
 def render_metrics(df: pd.DataFrame, total_task_count: int = 0, bu_task_count: int = 0):
     m = compute_metrics(df)
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
         st.metric("Total Tasks", m["total"])
     with col2:
@@ -201,10 +246,37 @@ def render_metrics(df: pd.DataFrame, total_task_count: int = 0, bu_task_count: i
             f"font-weight:600'>requires attention</p>",
             unsafe_allow_html=True,
         )
+    with col6:
+        st.metric("SLA Breaches", m["sla_breaches"])
+        st.markdown(
+            "<p style='color:#F0A500; font-size:12px; margin-top:-12px;"
+            "font-weight:600'>past due window</p>",
+            unsafe_allow_html=True,
+        )
 
-    st.progress(
-        m["pct_complete"] / 100,
-        text=f"Overall close progress: {m['pct_complete']}% complete",
+    st.markdown(
+        f"""
+        <div style='margin: 8px 0 4px 0;'>
+            <p style='color:#1B3A6B; font-size:0.875rem; margin-bottom:6px;'>
+                Overall close progress: {m['pct_complete']}% complete
+            </p>
+            <div style='
+                background-color: #D6E4F0;
+                border-radius: 8px;
+                height: 14px;
+                width: 100%;
+                overflow: hidden;
+            '>
+                <div style='
+                    background-color: #1B3A6B;
+                    border-radius: 8px;
+                    height: 14px;
+                    width: {m['pct_complete']}%;
+                '></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
     st.caption("Blocked/Escalated count may overlap with status counts above")
     if total_task_count > 0:
@@ -267,7 +339,7 @@ def build_bu_status_bar(entity_df: pd.DataFrame, entity_name: str):
 def render_bu_charts(df: pd.DataFrame):
     st.markdown(
         f"<h4 style='color:{COLOR_PRIMARY}; margin-top:16px; margin-bottom:4px'>"
-        f"Task Status by Business Unit</h4>",
+        f"Progress Status</h4>",
         unsafe_allow_html=True,
     )
 
@@ -337,7 +409,7 @@ def build_bu_timeline_donut(entity_df: pd.DataFrame, entity_name: str):
 def render_bu_donut_charts(df: pd.DataFrame):
     st.markdown(
         f"<h4 style='color:{COLOR_PRIMARY}; margin-top:16px; margin-bottom:4px'>"
-        f"Completion Status by Business Unit</h4>",
+        f"Schedule Status</h4>",
         unsafe_allow_html=True,
     )
 
@@ -396,7 +468,7 @@ def build_owner_function_bar(entity_df: pd.DataFrame, entity_name: str):
     fig.update_layout(
         title=dict(text=entity_name, font=dict(color=COLOR_PRIMARY, size=13), x=0),
         height=280,
-        margin=dict(l=4, r=4, t=40, b=8),
+        margin=dict(l=4, r=4, t=40, b=80),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
@@ -404,6 +476,7 @@ def build_owner_function_bar(entity_df: pd.DataFrame, entity_name: str):
             tickangle=0,
             tickfont=dict(color=COLOR_PRIMARY, size=12),
             gridcolor="#E8E8E8",
+            automargin=True,
         ),
         yaxis=dict(
             rangemode="tozero",
@@ -447,7 +520,7 @@ def render_owner_function_charts(df: pd.DataFrame):
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-def render_sidebar() -> str:
+def render_sidebar(df: pd.DataFrame):
     st.sidebar.markdown(
         f"<h2 style='color:{COLOR_PRIMARY}; margin-bottom:0'>Helvetia Advisory AG</h2>",
         unsafe_allow_html=True,
@@ -462,60 +535,50 @@ def render_sidebar() -> str:
         options=["Summary", "AI Assistant", "Details"],
         label_visibility="collapsed",
     )
+    st.sidebar.divider()
+    st.sidebar.markdown(
+        f"<p style='color:{COLOR_PRIMARY}; font-weight:700; margin-bottom:4px;'>Filters</p>",
+        unsafe_allow_html=True,
+    )
+    entities = st.sidebar.multiselect(
+        "Entity",
+        options=BU_ENTITY_KEYS,
+        default=[],
+        placeholder="All BUs",
+    )
+    all_phases = [p for p in PHASE_ORDER if p in df["Phase"].unique()]
+    phases = st.sidebar.multiselect(
+        "Phase",
+        options=all_phases,
+        default=[],
+        placeholder="All phases",
+    )
+    statuses = st.sidebar.multiselect(
+        "Status",
+        options=["Not Started", "In Progress", "Complete", "Blocked"],
+        default=[],
+        placeholder="All statuses",
+    )
+    timeline_statuses = st.sidebar.multiselect(
+        "Timeline Status",
+        options=TIMELINE_STATUS_OPTIONS,
+        default=[],
+        placeholder="All",
+    )
+    owner_functions = st.sidebar.multiselect(
+        "Owner Function",
+        options=sorted(df["Owner Function"].replace("", pd.NA).dropna().unique()),
+        default=[],
+        placeholder="All functions",
+    )
+    st.sidebar.divider()
     with st.sidebar.expander("About this app"):
         st.write(
             "AI-assisted month-end close manager for Helvetia Advisory AG. "
             "Displays close progress across DACH business units at WD+1, "
             "with exception flagging and AI-powered FP&A analysis."
         )
-    return active_page
-
-
-# ── Filter panel ──────────────────────────────────────────────────────────────
-
-def render_filters(df: pd.DataFrame):
-    st.markdown(
-        f"<h4 style='color:{COLOR_PRIMARY}; margin-top:0; margin-bottom:8px'>Filters</h4>",
-        unsafe_allow_html=True,
-    )
-
-    entities = st.multiselect(
-        "Entity",
-        options=BU_ENTITY_KEYS,
-        default=[],
-        placeholder="All BUs",
-    )
-
-    all_phases = [p for p in PHASE_ORDER if p in df["Phase"].unique()]
-    phases = st.multiselect(
-        "Phase",
-        options=all_phases,
-        default=[],
-        placeholder="All phases",
-    )
-
-    statuses = st.multiselect(
-        "Status",
-        options=["Not Started", "In Progress", "Complete", "Blocked"],
-        default=[],
-        placeholder="All statuses",
-    )
-
-    timeline_statuses = st.multiselect(
-        "Timeline Status",
-        options=TIMELINE_STATUS_OPTIONS,
-        default=[],
-        placeholder="All",
-    )
-
-    owner_functions = st.multiselect(
-        "Owner Function",
-        options=sorted(df["Owner Function"].replace("", pd.NA).dropna().unique()),
-        default=[],
-        placeholder="All functions",
-    )
-
-    return entities, phases, statuses, timeline_statuses, owner_functions
+    return active_page, entities, phases, statuses, timeline_statuses, owner_functions
 
 
 # ── Filter logic ──────────────────────────────────────────────────────────────
@@ -552,7 +615,7 @@ def render_tables(
     # ── Table 1: Blocked and Escalated ────────────────────────────────────────
     st.markdown(
         f"<h3 style='color:{COLOR_ESCALATED}; border-bottom: 2px solid {COLOR_ACCENT}; "
-        f"padding-bottom: 4px; margin-top: 24px'>Blocked and Escalated Tasks</h3>",
+        f"padding-bottom: 4px; margin-top: 24px'>Entity-Level Blocked and Escalated Tasks</h3>",
         unsafe_allow_html=True,
     )
 
@@ -562,17 +625,27 @@ def render_tables(
     if t1_df.empty:
         st.success("No blocked or escalated tasks")
     else:
-        display = _make_display(t1_df, BU_TABLE_COLS)
-        st.dataframe(
-            style_status_rows(display),
-            use_container_width=True,
-            hide_index=True,
-        )
+        t1_cols = [
+            "Working Day", "Task ID", "Task Description", "Organization Level",
+            "Country", "Timeline Status", "Completion %", "Priority", "Escalation Role", "Comments",
+        ]
+        display = _make_display(t1_df, t1_cols)
+        display = display.rename(columns={"Escalation Role": "Escalated to"})
+        status_values = t1_df["Status"].reset_index(drop=True)
+        def style_row_by_index(row):
+            status = status_values.iloc[row.name] if row.name < len(status_values) else "Not Started"
+            color = STATUS_COLORS.get(status, COLOR_NOT_STARTED)
+            return [f"background-color: {color}"] * len(row)
+        styled = display.reset_index(drop=True).style.apply(style_row_by_index, axis=1)
+        styled = styled.set_table_styles([
+            {"selector": "th", "props": [("text-align", "center"), ("background-color", "#1B3A6B"), ("color", "white"), ("font-weight", "600")]}
+        ])
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
     # ── Table 2: Close Task Detail ────────────────────────────────────────────
     st.markdown(
         f"<h3 style='color:{COLOR_PRIMARY}; border-bottom: 2px solid {COLOR_ACCENT}; "
-        f"padding-bottom: 4px; margin-top: 24px'>BU-Level Non-Blocked/Escalated Tasks</h3>",
+        f"padding-bottom: 4px; margin-top: 24px'>Entity-Level Non-Blocked/Escalated Tasks</h3>",
         unsafe_allow_html=True,
     )
 
@@ -581,21 +654,14 @@ def render_tables(
     if t2_df.empty:
         st.info("No tasks match the current filters.")
     else:
-        display = _make_display(t2_df, BU_TABLE_COLS)
-        st.dataframe(
-            style_status_rows(display),
-            use_container_width=True,
-            hide_index=True,
-            height=400,
-        )
+        t2_cols = [c for c in BU_TABLE_COLS if c != "Escalated"]
+        display = _make_display(t2_df, t2_cols)
+        styled = style_status_rows(display).set_table_styles([
+            {"selector": "th", "props": [("text-align", "center"), ("background-color", "#1B3A6B"), ("color", "white"), ("font-weight", "600")]}
+        ])
+        st.dataframe(styled, use_container_width=True, hide_index=True, height=400)
 
-    # ── Table 3: Consolidated View ────────────────────────────────────────────
-    st.markdown(
-        f"<h3 style='color:{COLOR_PRIMARY}; border-bottom: 2px solid {COLOR_ACCENT}; "
-        f"padding-bottom: 4px; margin-top: 24px'>Consolidated-Level Tasks</h3>",
-        unsafe_allow_html=True,
-    )
-
+    # ── Tables 3A/3B/3C: Consolidated View split by level ────────────────────
     consol_df = full_df[full_df["Organization Level"].isin(["Region", "Area", "Global"])].copy()
     if phases:
         consol_df = consol_df[consol_df["Phase"].isin(phases)]
@@ -604,16 +670,35 @@ def render_tables(
     consol_df = _sort_by_phase_wd(consol_df)
     consol_df = consol_df.rename(columns={"Lowest Org Level Name": "Org Level Name"})
 
-    if consol_df.empty:
-        st.info("No consolidated tasks match the active filters.")
-    else:
-        display = _make_display(consol_df, CONSOLIDATED_TABLE_COLS)
-        st.dataframe(
-            style_status_rows(display),
-            use_container_width=True,
-            hide_index=True,
-            height=400,
+    t3_cols = [
+        "Working Day", "Task ID", "Task Description", "Organization Level",
+        "Org Level Name", "Status", "Timeline Status", "Completion %", "Priority", "Escalation Role", "Comments",
+    ]
+    th_styles = [
+        {"selector": "th", "props": [("text-align", "center"), ("background-color", "#1B3A6B"), ("color", "white"), ("font-weight", "600")]}
+    ]
+
+    for level, header in [
+        ("Region", "Consolidation Tasks - Region Level"),
+        ("Area",   "Consolidation Tasks - Area Level"),
+        ("Global", "Consolidation Tasks - Global Level"),
+    ]:
+        st.markdown(
+            f"<h3 style='color:{COLOR_PRIMARY}; border-bottom: 2px solid {COLOR_ACCENT}; "
+            f"padding-bottom: 4px; margin-top: 24px'>{header}</h3>",
+            unsafe_allow_html=True,
         )
+        sub_df = consol_df[consol_df["Organization Level"] == level].copy()
+        if sub_df.empty:
+            st.info("No tasks at this level match the active filters.")
+        else:
+            display = _make_display(sub_df, t3_cols)
+            display = display.rename(columns={"Escalation Role": "Escalated to"})
+            display["Escalated to"] = display["Escalated to"].where(
+                sub_df["Escalated"].reset_index(drop=True) == "Yes", ""
+            )
+            styled = style_status_rows(display).set_table_styles(th_styles)
+            st.dataframe(styled, use_container_width=True, hide_index=True, height=300)
 
 
 # ── CFO email generation ──────────────────────────────────────────────────────
@@ -979,7 +1064,12 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
             elif label != "DACH SUMMARY":
                 lines.append(f"  {label}: {val}")
 
-    return "\n".join(lines)
+    return "\n".join(lines) + (
+        "\n\nNote: Monthly cost impacts are shown in local functional currency - "
+        "CHF for BU001 Switzerland, EUR for BU002 Germany and BU003 Austria. "
+        "Values have not been converted to a common reporting currency. "
+        "Total DACH cost impact requires FX conversion before aggregation."
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -1012,15 +1102,21 @@ def main():
         opacity: 1 !important;
     }
     div[data-testid="stMetric"] {
-        background-color: rgba(78, 205, 196, 0.06) !important;
-        border: 1px solid rgba(78, 205, 196, 0.2) !important;
-        border-radius: 12px !important;
+        background-color: white !important;
+        border-left: 4px solid #1B3A6B !important;
+        border-top: 1px solid #DEE2E6 !important;
+        border-right: 1px solid #DEE2E6 !important;
+        border-bottom: 1px solid #DEE2E6 !important;
+        border-radius: 0 8px 8px 0 !important;
         padding: 16px !important;
         box-shadow: 0 2px 8px rgba(27, 58, 107, 0.08) !important;
     }
     div[data-testid="stMetricLabel"] {
-        color: #1B3A6B !important;
+        color: #6B7280 !important;
         font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }
     div[data-testid="stMetricValue"] {
         color: #1B3A6B !important;
@@ -1039,19 +1135,6 @@ def main():
     }
     section[data-testid="stSidebar"] {
         background-color: #EBF0F7 !important;
-    }
-    div[data-testid="stProgressBar"] > div {
-        background-color: #4ECDC4 !important;
-        border-radius: 8px !important;
-    }
-    div[data-testid="stProgressBar"] {
-        border-radius: 8px !important;
-        background-color: #E8F8F7 !important;
-    }
-    div[data-testid="stExpander"] {
-        border-radius: 8px !important;
-        border: 1px solid rgba(78, 205, 196, 0.3) !important;
-        box-shadow: 0 1px 4px rgba(27, 58, 107, 0.06) !important;
     }
     </style>
     """,
@@ -1091,10 +1174,11 @@ def main():
 
     df = load_task_master()
 
-    active_page = render_sidebar()
+    active_page, entities, phases, statuses, timeline_statuses, owner_functions = render_sidebar(df)
 
     bu_df = df[df["Organization Level"] == "BU"].copy()
     now = datetime.now()
+    filtered = apply_filters(bu_df, entities, phases, statuses, timeline_statuses, owner_functions)
 
     if active_page == "AI Assistant":
         subtitle = "AI-Powered FP&A Analysis | Fiscal Period 2026 P05 | As of WD+1"
@@ -1103,7 +1187,34 @@ def main():
             f"font-weight:500; letter-spacing:0.3px;'>{subtitle}</p>",
             unsafe_allow_html=True,
         )
-
+        render_disclaimer()
+        st.markdown(
+            """
+            <div style='background:#EEF2F7; border-left:3px solid #4ECDC4; color:#6B7280;
+                        font-size:0.8rem; padding:8px 16px; border-radius:4px; margin-bottom:16px;'>
+                Analysis scope: BU001 Switzerland and DACH Region | Fiscal Period 2026 P05 | Snapshot WD+1
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+            <style>
+            .streamlit-expanderHeader {
+                border: 1px solid #DEE2E6 !important;
+                border-radius: 8px !important;
+                background-color: white !important;
+            }
+            .streamlit-expanderContent {
+                border: 1px solid #DEE2E6 !important;
+                border-top: none !important;
+                border-radius: 0 0 8px 8px !important;
+                background-color: white !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         row1_col1, row1_col2, row1_col3 = st.columns(3)
         row2_col1, row2_col2, row2_col3 = st.columns(3)
 
@@ -1242,32 +1353,26 @@ def main():
                 st.code(st.session_state.get("headcount_output", ""), language=None)
 
     else:
-        content_col, filter_col = st.columns([4, 1])
+        subtitle = (
+            f"Month-End Close Snapshot | Fiscal Period 2026 P05 | "
+            f"As of WD+1, {now.strftime('%d-%B-%Y %H:%M')}"
+        )
+        st.markdown(
+            f"<p style='color:{COLOR_PRIMARY}; margin:0 0 20px 0; font-size:1rem; "
+            f"font-weight:500; letter-spacing:0.3px;'>{subtitle}</p>",
+            unsafe_allow_html=True,
+        )
+        render_disclaimer()
 
-        with filter_col:
-            entities, phases, statuses, timeline_statuses, owner_functions = render_filters(df)
+        if active_page == "Summary":
+            render_rag_indicator(filtered)
+            render_metrics(filtered, total_task_count=len(df), bu_task_count=len(bu_df))
+            render_bu_charts(filtered)
+            render_bu_donut_charts(filtered)
+            render_owner_function_charts(filtered)
 
-        filtered = apply_filters(bu_df, entities, phases, statuses, timeline_statuses, owner_functions)
-
-        with content_col:
-            subtitle = (
-                f"Month-End Close Snapshot | Fiscal Period 2026 P05 | "
-                f"As of WD+1, {now.strftime('%d-%B-%Y %H:%M')}"
-            )
-            st.markdown(
-                f"<p style='color:{COLOR_PRIMARY}; margin:0 0 20px 0; font-size:1rem; "
-                f"font-weight:500; letter-spacing:0.3px;'>{subtitle}</p>",
-                unsafe_allow_html=True,
-            )
-
-            if active_page == "Summary":
-                render_metrics(filtered, total_task_count=len(df), bu_task_count=len(bu_df))
-                render_bu_charts(filtered)
-                render_bu_donut_charts(filtered)
-                render_owner_function_charts(filtered)
-
-            else:
-                render_tables(filtered, df, phases, timeline_statuses)
+        else:
+            render_tables(filtered, df, phases, timeline_statuses)
 
 
 if __name__ == "__main__":
