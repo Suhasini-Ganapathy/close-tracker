@@ -1075,16 +1075,27 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
 # ── Google Analytics ──────────────────────────────────────────────────────────
 
 def inject_ga(measurement_id: str):
-    ga_script = f"""
-        <script async src="https://www.googletagmanager.com/gtag/js?id={measurement_id}"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){{dataLayer.push(arguments);}}
-            gtag('js', new Date());
-            gtag('config', '{measurement_id}');
-        </script>
-    """
-    st.markdown(ga_script, unsafe_allow_html=True)
+    st.components.v1.html(
+        f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script async src="https://www.googletagmanager.com/gtag/js?id={measurement_id}"></script>
+            <script>
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){{dataLayer.push(arguments);}}
+                gtag('js', new Date());
+                gtag('config', '{measurement_id}', {{
+                    'page_title': 'Helvetia Close Tracker',
+                    'page_location': window.top.location.href
+                }});
+            </script>
+        </head>
+        <body></body>
+        </html>
+        """,
+        height=1,
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
