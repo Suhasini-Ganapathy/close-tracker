@@ -1072,36 +1072,22 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
     )
 
 
-# ── Google Analytics ──────────────────────────────────────────────────────────
-
-def inject_ga(measurement_id: str):
-    st.components.v1.html(
-        f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <script async src="https://www.googletagmanager.com/gtag/js?id={measurement_id}"></script>
-            <script>
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){{dataLayer.push(arguments);}}
-                gtag('js', new Date());
-                gtag('config', '{measurement_id}', {{
-                    'page_title': 'Helvetia Close Tracker',
-                    'page_location': window.top.location.href
-                }});
-            </script>
-        </head>
-        <body></body>
-        </html>
-        """,
-        height=1,
-    )
-
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    inject_ga("G-Y659LJ7T0D")
+    st.markdown(
+        """
+        <!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y659LJ7T0D"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){window.dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-Y659LJ7T0D');
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown(
         """
     <style>
