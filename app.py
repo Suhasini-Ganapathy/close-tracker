@@ -5,6 +5,7 @@ from pandas.io.formats.style import Styler
 from pathlib import Path
 import base64
 from datetime import datetime
+import streamlit.components.v1 as components
 
 def get_image_base64(image_path: str) -> str:
     with open(image_path, "rb") as f:
@@ -1075,6 +1076,18 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    components.html(
+        """
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y659LJ7T0D"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-Y659LJ7T0D');
+        </script>
+        """,
+        height=0,
+    )
     st.markdown(
         """
     <style>
