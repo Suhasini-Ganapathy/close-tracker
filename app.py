@@ -1077,19 +1077,6 @@ def generate_headcount_exceptions(df: pd.DataFrame) -> str:
 def main():
     st.markdown(
         """
-        <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y659LJ7T0D"></script>
-        <script>
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){window.dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', 'G-Y659LJ7T0D');
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        """
     <style>
     .block-container {
         padding-top: 0 !important;
