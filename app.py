@@ -12,14 +12,14 @@ def get_image_base64(image_path: str) -> str:
 
 
 # ── Colour palette (defined once, used throughout) ───────────────────────────
-COLOR_COMPLETE    = "#E2EFDA"
-COLOR_IN_PROGRESS = "#FFF2CC"
-COLOR_BLOCKED     = "#FFCCCC"
-COLOR_NOT_STARTED = "#F2F2F2"
-COLOR_ESCALATED   = "#FF0000"
-COLOR_PRIMARY     = "#1F4E79"
-COLOR_SECONDARY   = "#2E75B6"
-COLOR_ACCENT      = "#D6E4F0"
+COLOR_COMPLETE    = "#D4EDDA"
+COLOR_IN_PROGRESS = "#FFF3CD"
+COLOR_BLOCKED     = "#F8D7DA"
+COLOR_NOT_STARTED = "#E9ECEF"
+COLOR_ESCALATED   = "#C0392B"
+COLOR_PRIMARY     = "#1B3A6B"
+COLOR_SECONDARY   = "#4ECDC4"
+COLOR_ACCENT      = "#E8F8F7"
 
 STATUS_COLORS = {
     "Complete":    COLOR_COMPLETE,
@@ -29,17 +29,17 @@ STATUS_COLORS = {
 }
 
 BAR_COLORS = {
-    "Not Started": "#C8C8C8",
-    "In Progress": "#F5C842",
-    "Blocked":     "#E06060",
-    "Escalated":   COLOR_ESCALATED,
-    "Complete":    "#6DB87A",
+    "Not Started": "#ADB5BD",
+    "In Progress": "#F0A500",
+    "Blocked":     "#C0392B",
+    "Escalated":   "#922B21",
+    "Complete":    "#27AE60",
 }
 
 TIMELINE_COLORS = {
-    "On Time": "#4CAF50",
-    "At Risk":  "#F6AE2D",
-    "Late":     "#E84855",
+    "On Time": "#27AE60",
+    "At Risk":  "#F0A500",
+    "Late":     "#C0392B",
 }
 
 PHASE_ORDER = ["Pre-Close", "Close", "Close-to-Post-Close", "Post-Close"]
@@ -993,20 +993,65 @@ def main():
         padding-left: 2rem !important;
         padding-right: 2rem !important;
     }
+    .stApp {
+        background-color: #F4F6F8 !important;
+    }
     .stButton > button {
-        background-color: rgb(128, 27, 43) !important;
+        background-color: #8B1A2E !important;
         color: white !important;
         border: none !important;
         border-radius: 4px !important;
     }
     .stButton > button:hover {
-        background-color: rgb(100, 20, 33) !important;
+        background-color: #6B1422 !important;
         color: white !important;
     }
     textarea[disabled] {
         color: #1a1a1a !important;
         -webkit-text-fill-color: #1a1a1a !important;
         opacity: 1 !important;
+    }
+    div[data-testid="stMetric"] {
+        background-color: rgba(78, 205, 196, 0.06) !important;
+        border: 1px solid rgba(78, 205, 196, 0.2) !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+        box-shadow: 0 2px 8px rgba(27, 58, 107, 0.08) !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #1B3A6B !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #1B3A6B !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stDataFrame"] {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+        box-shadow: 0 2px 8px rgba(27, 58, 107, 0.08) !important;
+    }
+    div[data-testid="stPlotlyChart"] {
+        background-color: white !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
+        box-shadow: 0 2px 8px rgba(27, 58, 107, 0.08) !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #EBF0F7 !important;
+    }
+    div[data-testid="stProgressBar"] > div {
+        background-color: #4ECDC4 !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stProgressBar"] {
+        border-radius: 8px !important;
+        background-color: #E8F8F7 !important;
+    }
+    div[data-testid="stExpander"] {
+        border-radius: 8px !important;
+        border: 1px solid rgba(78, 205, 196, 0.3) !important;
+        box-shadow: 0 1px 4px rgba(27, 58, 107, 0.06) !important;
     }
     </style>
     """,
